@@ -16,6 +16,11 @@ to validate accounts by email, domain or group.
 ## Installation
 
 1. Download [Prebuilt Binary](https://github.com/bitly/oauth2_proxy/releases) (current release is `v2.2`) or build with `$ go get github.com/bitly/oauth2_proxy` which will put the binary in `$GOROOT/bin`
+Prebuilt binaries can be validated by extracting the file and verifying it against the `sha256sum.txt` checksum file provided for each release starting with version `v2.3`.
+```
+sha256sum -c sha256sum.txt 2>&1 | grep OK
+oauth2_proxy-2.3.linux-amd64: OK
+```
 2. Select a Provider and Register an OAuth Application with a Provider
 3. Configure OAuth2 Proxy using config file, command line options, or environment variables
 4. Configure SSL or Deploy behind a SSL endpoint (example provided for Nginx)
@@ -98,7 +103,7 @@ The Azure AD auth provider uses `openid` as it default scope. It uses `https://g
 The GitHub auth provider supports two additional parameters to restrict authentication to Organization or Team level access. Restricting by org and team is normally accompanied with `--email-domain=*`
 
     -github-org="": restrict logins to members of this organisation
-    -github-team="": restrict logins to members of any of these teams, separated by a comma
+    -github-team="": restrict logins to members of any of these teams (slug), separated by a comma
 
 If you are using GitHub enterprise, make sure you set the following to the appropriate url:
 
@@ -114,7 +119,7 @@ If you are using self-hosted GitLab, make sure you set the following to the appr
 
     -login-url="<your gitlab url>/oauth/authorize"
     -redeem-url="<your gitlab url>/oauth/token"
-    -validate-url="<your gitlab url>/api/v3/user"
+    -validate-url="<your gitlab url>/api/v4/user"
 
 
 ### LinkedIn Auth Provider
@@ -175,7 +180,7 @@ Usage of oauth2_proxy:
   -client-id string: the OAuth Client ID: ie: "123456.apps.googleusercontent.com"
   -client-secret string: the OAuth Client Secret
   -config string: path to config file
-  -cookie-domain string: an optional cookie domain to force cookies to (ie: .yourcompany.com)*
+  -cookie-domain string: an optional cookie domain to force cookies to (ie: .yourcompany.com)
   -cookie-expire duration: expire timeframe for cookie (default 168h0m0s)
   -cookie-httponly: set HttpOnly cookie flag (default true)
   -cookie-name string: the name of the cookie that the oauth_proxy creates (default "_oauth2_proxy")
@@ -187,7 +192,7 @@ Usage of oauth2_proxy:
   -email-domain value: authenticate emails with the specified domain (may be given multiple times). Use * to authenticate any email
   -footer string: custom footer string. Use "-" to disable default footer.
   -github-org string: restrict logins to members of this organisation
-  -github-team string: restrict logins to members of this team
+  -github-team string: restrict logins to members of any of these teams (slug), separated by a comma
   -google-admin-email string: the google admin to impersonate for api calls
   -google-group value: restrict logins to members of this google group (may be given multiple times).
   -google-service-account-json string: the path to the service account json credentials
@@ -205,6 +210,7 @@ Usage of oauth2_proxy:
   -redeem-url string: Token redemption endpoint
   -redirect-url string: the OAuth Redirect URL. ie: "https://internalapp.yourcompany.com/oauth2/callback"
   -request-logging: Log requests to stdout (default true)
+  -request-logging-format: Template for request log lines (see "Logging Format" paragraph below)
   -resource string: The resource that is protected (Azure AD only)
   -scope string: OAuth scope specification
   -set-xauthrequest: set X-Auth-Request-User and X-Auth-Request-Email response headers (useful in Nginx auth_request mode)
@@ -247,7 +253,7 @@ The following environment variables can be used in place of the corresponding co
 
 There are two recommended configurations.
 
-1) Configure SSL Terminiation with OAuth2 Proxy by providing a `--tls-cert=/path/to/cert.pem` and `--tls-key=/path/to/cert.key`.
+1) Configure SSL Termination with OAuth2 Proxy by providing a `--tls-cert=/path/to/cert.pem` and `--tls-key=/path/to/cert.key`.
 
 The command line to run `oauth2_proxy` in this configuration would look like this:
 
@@ -342,11 +348,20 @@ following:
 
 ## Logging Format
 
-OAuth2 Proxy logs requests to stdout in a format similar to Apache Combined Log.
+By default, OAuth2 Proxy logs requests to stdout in a format similar to Apache Combined Log.
 
 ```
 <REMOTE_ADDRESS> - <user@domain.com> [19/Mar/2015:17:20:19 -0400] <HOST_HEADER> GET <UPSTREAM_HOST> "/path/" HTTP/1.1 "<USER_AGENT>" <RESPONSE_CODE> <RESPONSE_BYTES> <REQUEST_DURATION>
 ```
+
+If you require a different format than that, you can configure it with the `-request-logging-format` flag.
+The default format is configured as follows:
+
+```
+{{.Client}} - {{.Username}} [{{.Timestamp}}] {{.Host}} {{.RequestMethod}} {{.Upstream}} {{.RequestURI}} {{.Protocol}} {{.UserAgent}} {{.StatusCode}} {{.ResponseSize}} {{.RequestDuration}}
+```
+
+[See `logMessageData` in `logging_handler.go`](./logging_handler.go) for all available variables.
 
 ## Adding a new Provider
 
@@ -371,6 +386,15 @@ server {
     proxy_set_header X-Real-IP               $remote_addr;
     proxy_set_header X-Scheme                $scheme;
     proxy_set_header X-Auth-Request-Redirect $request_uri;
+  }
+  location = /oauth2/auth {
+    proxy_pass       http://127.0.0.1:4180;
+    proxy_set_header Host             $host;
+    proxy_set_header X-Real-IP        $remote_addr;
+    proxy_set_header X-Scheme         $scheme;
+    # nginx auth_request includes headers but not body
+    proxy_set_header Content-Length   "";
+    proxy_pass_request_body           off;
   }
 
   location / {

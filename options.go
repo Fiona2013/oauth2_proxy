@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/18F/hmacauth"
 	"github.com/bitly/oauth2_proxy/providers"
 	oidc "github.com/coreos/go-oidc"
+	"github.com/mbland/hmacauth"
 )
 
 // Configuration Options that can be set by Command Line Flag, or Config File
@@ -74,7 +74,8 @@ type Options struct {
 	Scope             string `flag:"scope" cfg:"scope"`
 	ApprovalPrompt    string `flag:"approval-prompt" cfg:"approval_prompt"`
 
-	RequestLogging bool `flag:"request-logging" cfg:"request_logging"`
+	RequestLogging       bool   `flag:"request-logging" cfg:"request_logging"`
+	RequestLoggingFormat string `flag:"request-logging-format" cfg:"request_logging_format"`
 
 	SignatureKey string `flag:"signature-key" cfg:"signature_key" env:"OAUTH2_PROXY_SIGNATURE_KEY"`
 
@@ -94,23 +95,24 @@ type SignatureData struct {
 
 func NewOptions() *Options {
 	return &Options{
-		ProxyPrefix:         "/oauth2",
-		HttpAddress:         "127.0.0.1:4180",
-		HttpsAddress:        ":443",
-		DisplayHtpasswdForm: true,
-		CookieName:          "_oauth2_proxy",
-		CookieSecure:        true,
-		CookieHttpOnly:      true,
-		CookieExpire:        time.Duration(168) * time.Hour,
-		CookieRefresh:       time.Duration(0),
-		SetXAuthRequest:     false,
-		SkipAuthPreflight:   false,
-		PassBasicAuth:       true,
-		PassUserHeaders:     true,
-		PassAccessToken:     false,
-		PassHostHeader:      true,
-		ApprovalPrompt:      "force",
-		RequestLogging:      true,
+		ProxyPrefix:          "/oauth2",
+		HttpAddress:          "127.0.0.1:4180",
+		HttpsAddress:         ":443",
+		DisplayHtpasswdForm:  true,
+		CookieName:           "_oauth2_proxy",
+		CookieSecure:         true,
+		CookieHttpOnly:       true,
+		CookieExpire:         time.Duration(168) * time.Hour,
+		CookieRefresh:        time.Duration(0),
+		SetXAuthRequest:      false,
+		SkipAuthPreflight:    false,
+		PassBasicAuth:        true,
+		PassUserHeaders:      true,
+		PassAccessToken:      false,
+		PassHostHeader:       true,
+		ApprovalPrompt:       "force",
+		RequestLogging:       true,
+		RequestLoggingFormat: defaultRequestLoggingFormat,
 	}
 }
 
@@ -180,8 +182,8 @@ func (o *Options) Validate() error {
 	for _, u := range o.SkipAuthRegex {
 		CompiledRegex, err := regexp.Compile(u)
 		if err != nil {
-			msgs = append(msgs, fmt.Sprintf(
-				"error compiling regex=%q %s", u, err))
+			msgs = append(msgs, fmt.Sprintf("error compiling regex=%q %s", u, err))
+			continue
 		}
 		o.CompiledRegex = append(o.CompiledRegex, CompiledRegex)
 	}
